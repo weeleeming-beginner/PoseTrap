@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pixel Quest — Science Adventure</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Nunito:wght@400;700;800;900&display=swap');
+:root{--ink:#18243a;--cream:#fff8df;--mint:#b9f3d0;--pink:#ff9eaa;--gold:#ffd66b}
+*{box-sizing:border-box}body{margin:0;background:#17263c;color:var(--ink);font-family:Nunito,system-ui,sans-serif;min-height:100vh;display:grid;place-items:center;padding:18px}
+.shell{width:min(1040px,100%);background:#fff8df;border:5px solid #0d1728;box-shadow:0 10px 0 #0d1728;border-radius:12px;overflow:hidden}
+.top{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;background:#f6cf75;border-bottom:4px solid #0d1728;gap:12px;flex-wrap:wrap}
+.logo{font:12px 'Press Start 2P';line-height:1.8}.logo span{color:#32765d}.stats{display:flex;gap:10px;flex-wrap:wrap}.pill{background:#fff8df;border:3px solid #18243a;padding:7px 11px;font-weight:900;border-radius:8px}
+.stage{position:relative;background:#8bd6e9}canvas{display:block;width:100%;height:auto;image-rendering:pixelated;touch-action:manipulation}
+.hud{display:flex;justify-content:space-between;gap:10px;padding:12px 16px;background:#e5f6d6;border-top:4px solid #18243a;align-items:center;flex-wrap:wrap;font-weight:800}
+.hint{font-size:13px;color:#42516a}.controls{display:flex;gap:8px;flex-wrap:wrap}
+button{font:800 14px Nunito;border:3px solid #18243a;border-radius:8px;padding:9px 13px;background:#fff8df;color:#18243a;cursor:pointer;box-shadow:0 3px 0 #18243a}
+button:hover{transform:translateY(-1px);background:#fff0b8}button:active{transform:translateY(2px);box-shadow:none}button.primary{background:#a9edbd}button:focus-visible{outline:3px solid #e16b7b;outline-offset:3px}
+.overlay{position:absolute;inset:0;display:grid;place-items:center;background:#17263cbb;padding:16px}
+.panel{width:min(570px,100%);max-height:95%;overflow:auto;background:#fff8df;border:4px solid #18243a;border-radius:12px;padding:22px;box-shadow:0 7px 0 #18243a;text-align:center}
+.pixel{font:10px 'Press Start 2P';line-height:1.9}.panel h1{font:clamp(15px,2.5vw,22px) 'Press Start 2P';line-height:1.8;margin:8px 0 14px}.panel p{font-weight:700;line-height:1.55}.choices{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:15px}.choices button{text-align:left;min-height:58px}.choices button.correct{background:#a9edbd}.choices button.wrong{background:#ffb5b5}
+.small{font-size:12px;color:#58657a}.progress{height:12px;background:#d6ddc9;border:2px solid #18243a;border-radius:9px;overflow:hidden;margin:12px 0}.progress i{display:block;height:100%;background:#4caa78;width:0}
+@media(max-width:560px){body{padding:5px}.shell{border-width:3px}.top{padding:10px}.logo{font-size:9px}.pill{font-size:12px;padding:5px 7px}.hud{padding:9px}.hint{font-size:11px}.panel{padding:15px}.choices{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<main class="shell">
+<header class="top"><div class="logo">PIXEL <span>QUEST</span><br><small>SCIENCE ADVENTURE</small></div><div class="stats"><div class="pill">⭐ XP <b id="xp">0</b></div><div class="pill">🧪 DISCOVERIES <b id="found">0/5</b></div><div class="pill">❤️ <b id="lives">3</b></div></div></header>
+<section class="stage"><canvas id="game" width="960" height="540" aria-label="Pixel Quest game world"></canvas><div class="overlay" id="overlay"><div class="panel" id="panel"></div></div></section>
+<footer class="hud"><div><b id="status">Welcome, young scientist!</b><div class="hint">Move: ← → or A / D · Jump: Space / ↑ · Interact: E</div></div><div class="controls"><button id="sound">🔊 Sound on</button><button id="help">How to play</button><button id="restart">↻ Restart</button></div></footer>
+</main>
+<script>
+(()=>{
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d'),W=960,H=540;
+const $=id=>document.getElementById(id);
+let mode='intro',xp=0,lives=3,found=new Set(),player={x:90,y:390,vx:0,vy:0,w:28,h:38,ground:false,face:1},keys={},sound=true,questionIndex=-1,locked=false,toast='',toastTime=0,frame=0;
+const stations=[
+{x:190,name:'THE SOLAR LAB',color:'#ffd166',icon:'☀',q:'What is the main source of energy for Earth’s climate system?',a:['The Sun','The Moon','Volcanoes','Ocean waves'],correct:0,why:'The Sun provides most of the energy that drives Earth’s weather and climate.'},
+{x:365,name:'ATOM GARDEN',color:'#c7a6ff',icon:'⚛',q:'Which particle has a negative electric charge?',a:['Proton','Neutron','Electron','Nucleus'],correct:2,why:'Electrons carry a negative charge. Protons are positive and neutrons have no charge.'},
+{x:540,name:'LIFE TREE',color:'#ff9eaa',icon:'🌱',q:'Which cell structure contains most of a cell’s genetic information?',a:['Cell membrane','Nucleus','Cytoplasm','Cell wall'],correct:1,why:'The nucleus stores most of the DNA in eukaryotic cells.'},
+{x:715,name:'FORCE TOWER',color:'#8bd6e9',icon:'↗',q:'What force pulls objects toward Earth?',a:['Friction','Magnetism','Gravity','Tension'],correct:2,why:'Gravity is the attractive force between masses. Earth’s gravity pulls objects toward its centre.'},
+{x:875,name:'WATER TEMPLE',color:'#8de0cb',icon:'💧',q:'What is the chemical formula of water?',a:['CO₂','H₂O','O₂','NaCl'],correct:1,why:'A water molecule contains two hydrogen atoms bonded to one oxygen atom: H₂O.'}
+];
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
+function text(t,x,y,size=16,color='#18243a',align='left',font='bold 16px Nunito'){ctx.fillStyle=color;ctx.font=font;ctx.textAlign=align;ctx.fillText(t,x,y)}
+function drawCloud(x,y,s=1){rect(x,y,55*s,16*s,'#f7fff4');rect(x+12*s,y-10*s,28*s,20*s,'#f7fff4');rect(x+36*s,y-4*s,23*s,14*s,'#f7fff4')}
+function draw(){
+frame++;ctx.clearRect(0,0,W,H);
+let sky=ctx.createLinearGradient(0,0,0,H);sky.addColorStop(0,'#78cde7');sky.addColorStop(1,'#d5f3d9');ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+drawCloud((frame*.25)%1100-70,85);drawCloud((frame*.17+390)%1100-70,145,.7);
+rect(0,320,960,220,'#b4df9b');rect(0,355,960,185,'#80bd79');
+for(let i=0;i<16;i++){let x=i*70-(frame*.35%70);rect(x,340,24,8,'#6aa96e');rect(x+8,330,8,12,'#6aa96e')}
+rect(0,430,960,110,'#d7b77c');rect(0,430,960,8,'#9b744b');
+for(let x=0;x<960;x+=48){rect(x,460,24,4,'#c49b62');rect(x+20,490,18,4,'#c49b62')}
+// distant hills
+rect(0,295,960,25,'#75b77f');rect(70,270,110,45,'#75b77f');rect(680,270,150,50,'#75b77f');
+stations.forEach((s,i)=>{let done=found.has(i);rect(s.x-26,375,52,55,'#71523d');rect(s.x-34,365,68,15,'#493d55');rect(s.x-23,348,46,17,s.color);rect(s.x-5,330,10,18,'#493d55');text(done?'✓':s.icon,s.x,363,24,done?'#fff':'#18243a','center');text(s.name,s.x,415,10,'#18243a','center',"bold 10px 'Press Start 2P'");if(!done){rect(s.x-4,320+Math.sin(frame*.08+i)*4,8,8,'#fff2a6')}});
+// signposts
+rect(35,380,7,50,'#79553b');rect(15,370,48,22,'#f6cf75');text('SCIENCE',39,385,9,'#18243a','center',"bold 9px 'Press Start 2P'");
+drawPlayer();
+if(mode==='play'){let near=stations.findIndex((s,i)=>!found.has(i)&&Math.abs(player.x-s.x)<48);if(near>=0){rect(near>=0?stations[near].x-58:0,290,116,25,'#fff8df');text('PRESS E',stations[near].x,308,11,'#18243a','center',"bold 11px 'Press Start 2P'")}}
+if(toastTime>0){toastTime--;rect(280,22,400,36,'#fff8df');text(toast,480,46,14,'#18243a','center')}
+requestAnimationFrame(draw);
+}
+function drawPlayer(){let x=player.x,y=player.y;rect(x+6,y+2,17,17,'#f2b887');rect(x+4,y,20,8,'#493d55');rect(x+5,y+18,19,14,'#416baf');rect(x+2,y+20,5,12,'#f2b887');rect(x+23,y+20,5,12,'#f2b887');rect(x+6,y+31,7,7,'#493d55');rect(x+17,y+31,7,7,'#493d55');rect(x+(player.face>0?17:8),y+8,3,3,'#18243a')}
+function update(){if(mode!=='play')return;let left=keys.ArrowLeft||keys.a||keys.A,right=keys.ArrowRight||keys.d||keys.D;player.vx=left?-3.1:right?3.1:0;if(player.vx)player.face=Math.sign(player.vx);if((keys[' ']||keys.ArrowUp||keys.w||keys.W)&&player.ground){player.vy=-9.5;player.ground=false}player.x=Math.max(8,Math.min(930,player.x+player.vx));player.vy+=.45;player.y+=player.vy;if(player.y+38>=430){player.y=392;player.vy=0;player.ground=true}if(keys.e||keys.E){keys.e=keys.E=false;interact()}}
+function interact(){if(mode!=='play'||locked)return;let i=stations.findIndex((s,i)=>!found.has(i)&&Math.abs(player.x-s.x)<48);if(i<0){toast='Walk closer to a glowing science station!';toastTime=100;return}questionIndex=i;showQuestion(i)}
+function showQuestion(i){locked=true;mode='question';let s=stations[i];$('panel').innerHTML='<div class="pixel">SCIENCE CHALLENGE '+(i+1)+'/5</div><h1>'+s.name+'</h1><p>'+s.q+'</p><div class="choices">'+s.a.map((a,j)=>'<button data-answer="'+j+'">'+String.fromCharCode(65+j)+'. '+a+'</button>').join('')+'</div><p class="small">Choose your answer. You can learn from every attempt!</p>'; $('overlay').style.display='grid';$('panel').querySelectorAll('[data-answer]').forEach(b=>b.onclick=()=>answer(+b.dataset.answer))}
+function answer(n){let s=stations[questionIndex],buttons=$('panel').querySelectorAll('[data-answer]');buttons.forEach(b=>b.disabled=true);if(n===s.correct){found.add(questionIndex);xp+=100;buttons[n].classList.add('correct');$('panel').insertAdjacentHTML('beforeend','<p>✨ Correct! +100 XP</p><p>'+s.why+'</p>')}else{lives=Math.max(0,lives-1);buttons[n].classList.add('wrong');buttons[s.correct].classList.add('correct');$('panel').insertAdjacentHTML('beforeend','<p>Good try! The correct answer is <b>'+s.a[s.correct]+'</b>.</p><p>'+s.why+'</p>')}updateStats();$('panel').insertAdjacentHTML('beforeend','<p><button class="primary" id="continue">Continue adventure →</button></p>');$('continue').onclick=()=>{locked=false;if(found.size===5){mode='won';showEnd()}else{mode='play';$('overlay').style.display='none';$('status').textContent='Explore and discover science!'}}}
+function updateStats(){$('xp').textContent=xp;$('found').textContent=found.size+'/5';$('lives').textContent=lives}
+function showIntro(){$('overlay').style.display='grid';$('panel').innerHTML='<div class="pixel">WELCOME, EXPLORER!</div><h1>PIXEL QUEST</h1><p>Your mission: explore the science park, visit five stations and prove your scientific knowledge.</p><p>Find the glowing stations. Walk near one and press <b>E</b> to answer its science question.</p><p>Earn <b>100 XP</b> for every correct answer. Learn something new along the way!</p><button class="primary" id="start">▶ START ADVENTURE</button><p class="small">Keyboard: A / D or ← / → to move · Space / ↑ to jump · E to interact</p>';$('start').onclick=()=>{mode='play';$('overlay').style.display='none';$('status').textContent='Find the first glowing science station!'}}
+function showEnd(){$('overlay').style.display='grid';$('panel').innerHTML='<div class="pixel">MISSION COMPLETE</div><h1>SCIENCE HERO!</h1><p>You explored all five stations and collected <b>'+xp+' XP</b>.</p><p>You discovered facts about energy, atoms, cells, forces and water. Keep asking questions — that is how science grows!</p><p>🏆 <b>THE KNOWLEDGE KEEPER</b></p><button class="primary" id="again">Play again</button>';$('again').onclick=restart}
+function restart(){xp=0;lives=3;found.clear();player.x=90;player.y=392;player.vy=0;questionIndex=-1;locked=false;mode='intro';updateStats();showIntro();$('status').textContent='Welcome, young scientist!'}
+function help(){if(mode==='question')return;$('overlay').style.display='grid';$('panel').innerHTML='<div class="pixel">FIELD GUIDE</div><h1>HOW TO PLAY</h1><p>1. Explore the park with A / D or arrow keys.</p><p>2. Jump with Space or ↑.</p><p>3. Stand near a science station and press E.</p><p>4. Answer its question to earn 100 XP and unlock your discovery.</p><p>There are five stations: solar energy, atoms, cells, forces and water.</p><button class="primary" id="back">Back to game</button>';$('back').onclick=()=>{$('overlay').style.display='none';if(mode==='intro')showIntro()}}
+function beep(freq=520){if(!sound)return;try{let a=new(window.AudioContext||window.webkitAudioContext)(),o=a.createOscillator(),g=a.createGain();o.frequency.value=freq;g.gain.value=.035;o.connect(g);g.connect(a.destination);o.start();o.stop(a.currentTime+.09);o.onended=()=>a.close()}catch(e){}}
+window.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight','ArrowUp',' '].includes(e.key))e.preventDefault();keys[e.key]=true;if(e.key.toLowerCase()==='e'&&mode==='play')interact();if(e.key==='Escape'&&mode==='play')help()});
+window.addEventListener('keyup',e=>keys[e.key]=false);
+$('sound').onclick=()=>{sound=!sound;$('sound').textContent=sound?'🔊 Sound on':'🔇 Sound off';if(sound)beep()};
+$('help').onclick=help;$('restart').onclick=restart;
+canvas.addEventListener('pointerdown',e=>{if(mode!=='play')return;let r=canvas.getBoundingClientRect(),x=(e.clientX-r.left)*W/r.width;player.x=x;interact()});
+function loop(){update();requestAnimationFrame(loop)}showIntro();updateStats();draw();loop();
+})();
+</script>
+</body></html>
